@@ -1,0 +1,18 @@
+
+#1, make cfitsio library
+cd cfitsio/cfitsio
+./configure --prefix=${..}
+make
+make install
+
+#2, make crossmatch library
+cd CrossMatchLibrary/src
+make
+make install
+
+#3, get FindVariationSequence
+cd src
+make 
+make install
+./FindVariationSequence
+./FindVariationSequence /home/xy/program/netbeans/FindVariationSequence/data/ referance.cat standrad.cat objfilelist.cat 0.7 result result2 30 3
