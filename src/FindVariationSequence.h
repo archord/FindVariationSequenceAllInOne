@@ -16,6 +16,7 @@ typedef struct MATCH_MAG_RECORD {
     float refMchMagErr;
     float stdMchMag;
     float stdMchMagErr;
+    float refMchCorrect;
     float aheadNAvg;
     float aheadNRms;
 } match_mag_rcd;
@@ -47,7 +48,7 @@ public:
 
     void batchMatch(char *dataDir, char *reffName, char *stdfName,
         char *objListfName, float errorBox, char *vsOutDir, char *outDir2,
-        int headN, float trms);
+        int headN, float trms, float trmsRmv);
     double getImageTime(char *fitsName);
     
 private:

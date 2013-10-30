@@ -26,7 +26,7 @@ FindVariationSequence::~FindVariationSequence() {
 
 void FindVariationSequence::batchMatch(char *dataDir, char *reffName, char *stdfName,
         char *objListfName, float errorBox, char *vsOutDir, char *outDir2,
-        int headN, float trms) {
+        int headN, float trms, float trmsRmv) {
 
     printf("starting match...\n");
 
@@ -146,14 +146,36 @@ void FindVariationSequence::batchMatch(char *dataDir, char *reffName, char *stdf
             long curMatchCnt = vsRst[i].rcdNum;
             match_mag_rcd *curMatchPeer = vsRst[i].rcdlst;
             int j;
-            CircleList *clst = new CircleList(headN);
             for (j = 0; j < curMatchCnt; j++) {
+                //correct the object star
+                curMatchPeer[j].refMchCorrect = curMatchPeer[j].refMchMag +
+                        vsRst[i].stdmag - curMatchPeer[j].stdMchMag;
+            }
+
+            //calculate the prev N avg and rms
+            //寻找突变事件，出现连续的多个mag值，大于前N个mag值的（K倍的rms加avg）
+            //avg的计算需要过滤单独的mag值，大于前N个mag值的（K倍的rms加avg）
+            CircleList *clst = new CircleList(headN);
+            for (j = 0; j < curMatchCnt - 1; j++) {
                 if (j >= headN) {
                     curMatchPeer[j].aheadNAvg = clst->getAvg();
                     curMatchPeer[j].aheadNRms = clst->getRms();
                 }
-                clst->add(curMatchPeer[j].refMchMag);
+                if (j < headN) {
+                    clst->add(curMatchPeer[j].refMchCorrect);
+                } else {
+                    float cmpValue = curMatchPeer[j].aheadNAvg +
+                            trmsRmv * curMatchPeer[j].aheadNRms;
+                    //过滤单个峰值
+                    if (!((curMatchPeer[j - 1].refMchCorrect < cmpValue) &&
+                            (curMatchPeer[j].refMchCorrect >= cmpValue) &&
+                            (curMatchPeer[j + 1].refMchCorrect < cmpValue))) {
+                        clst->add(curMatchPeer[j].refMchCorrect);
+                    }
+                }
             }
+            curMatchPeer[curMatchCnt - 1].aheadNAvg = clst->getAvg();
+            curMatchPeer[curMatchCnt - 1].aheadNRms = clst->getRms();
 
 #ifdef WITH_VS
             sprintf(outfName, "%s/%s_%f_%f_%.3f.cat", vsOutDir, OUTFILE_PREFIX,
@@ -162,9 +184,9 @@ void FindVariationSequence::batchMatch(char *dataDir, char *reffName, char *stdf
             fprintf(fp, "#reference star x\n");
             fprintf(fp, "#reference star y\n");
             fprintf(fp, "#reference star mag\n");
-            fprintf(fp, "#standrad star x\n");
-            fprintf(fp, "#standrad star y\n");
-            fprintf(fp, "#standrad star mag\n");
+            fprintf(fp, "#compare star x\n");
+            fprintf(fp, "#compare star y\n");
+            fprintf(fp, "#compare star mag\n");
             fprintf(fp, "%f\n", vsRst[i].refX);
             fprintf(fp, "%f\n", vsRst[i].refY);
             fprintf(fp, "%f\n", vsRst[i].refmag);
@@ -173,13 +195,14 @@ void FindVariationSequence::batchMatch(char *dataDir, char *reffName, char *stdf
             fprintf(fp, "%f\n", vsRst[i].stdmag);
             fprintf(fp, "\n");
             fprintf(fp, "#total star: %ld\n", vsRst[i].rcdNum);
-            fprintf(fp, "#time refMatchMag refMatchMagErr stdMatchMag "
-                    "stdMatchMagErr aheadNavg aheadNrms\n");
+            fprintf(fp, "#time objectMag objectMagErr compareMag "
+                    "compareMagErr objCrtMag aheadNavg aheadNrms\n");
 
             for (j = 0; j < curMatchCnt; j++) {
-                fprintf(fp, "%.8f %f %f %f %f %f %f\n", curMatchPeer[j].time,
+                fprintf(fp, "%.8f %f %f %f %f %f %f %f\n", curMatchPeer[j].time,
                         curMatchPeer[j].refMchMag, curMatchPeer[j].refMchMagErr,
                         curMatchPeer[j].stdMchMag, curMatchPeer[j].refMchMagErr,
+                        curMatchPeer[j].refMchCorrect,
                         curMatchPeer[j].aheadNAvg, curMatchPeer[j].aheadNRms);
             }
             fclose(fp);
@@ -191,31 +214,35 @@ void FindVariationSequence::batchMatch(char *dataDir, char *reffName, char *stdf
                         OUTFILE_PREFIX, vsRst[i].refX, vsRst[i].refY, vsRst[i].refmag);
                 for (j = 0; j < curMatchCnt; j++) {
                     if (j >= headN) {
-                        if (curMatchPeer[j].refMchMag > curMatchPeer[j].aheadNAvg +
+                        if (curMatchPeer[j].refMchCorrect > curMatchPeer[j].aheadNAvg +
                                 trms * curMatchPeer[j].aheadNRms) {
                             breakflag++;
                         } else {
                             breakflag = 0;
                         }
+                        //连续多个大于avg+k*rms
                         if (breakflag == 2) {
                             if (NULL == fp2) {
                                 breakfile++;
                                 fp2 = fopen(outfName2, "w");
-                                fprintf(fp2, "#time refMatchMag refMatchMagErr "
-                                        "stdMatchMag stdMatchMagErr aheadNavg aheadNrms\n");
+                                fprintf(fp2, "#time objectMag objectMagErr compareMag "
+                                        "compareMagErr objCrtMag aheadNavg aheadNrms\n");
                             }
-                            fprintf(fp2, "%.8f %f %f %f %f %f %f\n", curMatchPeer[j - 1].time,
+                            fprintf(fp2, "%.8f %f %f %f %f %f %f %f\n", curMatchPeer[j - 1].time,
                                     curMatchPeer[j - 1].refMchMag, curMatchPeer[j - 1].refMchMagErr,
                                     curMatchPeer[j - 1].stdMchMag, curMatchPeer[j - 1].refMchMagErr,
+                                    curMatchPeer[j - 1].refMchCorrect,
                                     curMatchPeer[j - 1].aheadNAvg, curMatchPeer[j - 1].aheadNRms);
-                            fprintf(fp2, "%.8f %f %f %f %f %f %f\n", curMatchPeer[j].time,
+                            fprintf(fp2, "%.8f %f %f %f %f %f %f %f\n", curMatchPeer[j].time,
                                     curMatchPeer[j].refMchMag, curMatchPeer[j].refMchMagErr,
                                     curMatchPeer[j].stdMchMag, curMatchPeer[j].refMchMagErr,
+                                    curMatchPeer[j].refMchCorrect,
                                     curMatchPeer[j].aheadNAvg, curMatchPeer[j].aheadNRms);
                         } else if (breakflag > 2) {
-                            fprintf(fp2, "%.8f %f %f %f %f %f %f\n", curMatchPeer[j].time,
+                            fprintf(fp2, "%.8f %f %f %f %f %f %f %f\n", curMatchPeer[j].time,
                                     curMatchPeer[j].refMchMag, curMatchPeer[j].refMchMagErr,
                                     curMatchPeer[j].stdMchMag, curMatchPeer[j].refMchMagErr,
+                                    curMatchPeer[j].refMchCorrect,
                                     curMatchPeer[j].aheadNAvg, curMatchPeer[j].aheadNRms);
                         }
                     }
