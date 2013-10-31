@@ -164,12 +164,12 @@ void FindVariationSequence::batchMatch(char *dataDir, char *reffName, char *stdf
                 if (j < headN) {
                     clst->add(curMatchPeer[j].refMchCorrect);
                 } else {
-                    float cmpValue = curMatchPeer[j].aheadNAvg +
-                            trmsRmv * curMatchPeer[j].aheadNRms;
+                    float cmpValue = trmsRmv * curMatchPeer[j].aheadNRms;
+                    float diffi1 = fabs(curMatchPeer[j].aheadNAvg - curMatchPeer[j - 1].refMchCorrect);
+                    float diffi2 = fabs(curMatchPeer[j].aheadNAvg - curMatchPeer[j].refMchCorrect);
+                    float diffi3 = fabs(curMatchPeer[j].aheadNAvg - curMatchPeer[j + 1].refMchCorrect);
                     //过滤单个峰值
-                    if (!((curMatchPeer[j - 1].refMchCorrect < cmpValue) &&
-                            (curMatchPeer[j].refMchCorrect >= cmpValue) &&
-                            (curMatchPeer[j + 1].refMchCorrect < cmpValue))) {
+                    if (!((diffi1 < cmpValue) && (diffi2 >= cmpValue) && (diffi3 < cmpValue))) {
                         clst->add(curMatchPeer[j].refMchCorrect);
                     }
                 }
